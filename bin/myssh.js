@@ -140,6 +140,7 @@ access.command('ls <nodeId>')
 access.command('grant <nodeId> <email>')
   .description('Grant a user access to a node')
   .option('-p, --permission <permission>', 'Permission level (CONNECT)', 'CONNECT')
+  .option('-d, --duration <minutes>', 'Access duration in minutes (e.g. 60, 1440 for 1 day)')
   .action(nodeAccessGrantCommand);
 
 access.command('revoke <nodeId> <email>')
