@@ -107,17 +107,31 @@ export async function forwardCommand(nodeIdOrHostname, remotePort, localPort, op
 
     const ws = new WebSocket(wsUrl);
     ws.binaryType = 'nodebuffer';
+    let tunnelReady = false;
+
+    // Pause the socket until the backend signals the tunnel is ready
+    socket.pause();
 
     ws.on('open', () => {
       if (!options.daemon) {
         console.log(chalk.dim(`  [${connId}] connection opened (${activeConns} active)`));
       }
-      socket.on('data', (data) => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(data);
-      });
     });
 
     ws.on('message', (data) => {
+      // First message is the 'ready' signal from the backend
+      if (!tunnelReady) {
+        const msg = typeof data === 'string' ? data : data.toString();
+        if (msg === 'ready') {
+          tunnelReady = true;
+          // Now start forwarding TCP data to WebSocket
+          socket.on('data', (chunk) => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(chunk);
+          });
+          socket.resume();
+          return;
+        }
+      }
       if (!socket.destroyed) socket.write(data);
     });
 
@@ -132,8 +146,19 @@ export async function forwardCommand(nodeIdOrHostname, remotePort, localPort, op
 
     socket.on('close', cleanup);
     socket.on('error', cleanup);
-    ws.on('close', () => { if (!socket.destroyed) socket.destroy(); });
-    ws.on('error', () => { if (!socket.destroyed) socket.destroy(); });
+    ws.on('close', (code, reason) => {
+      const reasonStr = reason?.toString() || '';
+      if (code !== 1000 && !options.daemon) {
+        console.error(chalk.red(`  [${connId}] WebSocket closed: ${code} ${reasonStr}`));
+      }
+      if (!socket.destroyed) socket.destroy();
+    });
+    ws.on('error', (err) => {
+      if (!options.daemon) {
+        console.error(chalk.red(`  [${connId}] WebSocket error: ${err.message}`));
+      }
+      if (!socket.destroyed) socket.destroy();
+    });
   });
 
   server.on('error', (err) => {

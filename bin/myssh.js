@@ -31,6 +31,36 @@ import {
   nodeUnblockCommand,
   nodeRemoveCommand,
 } from '../commands/node-access.js';
+import { vaultSetupCommand } from '../commands/vault-setup.js';
+import { vaultRunCommand } from '../commands/vault-run.js';
+import {
+  vaultProjectCreateCommand,
+  vaultProjectListCommand,
+  vaultProjectRemoveCommand,
+} from '../commands/vault-project.js';
+import {
+  vaultEnvCreateCommand,
+  vaultEnvListCommand,
+  vaultEnvRemoveCommand,
+  vaultEnvCloneCommand,
+} from '../commands/vault-env.js';
+import {
+  vaultSetCommand,
+  vaultGetCommand,
+  vaultListCommand,
+  vaultRemoveCommand,
+  vaultImportCommand,
+  vaultExportCommand,
+  vaultHistoryCommand,
+} from '../commands/vault-secret.js';
+import {
+  vaultAccessListCommand,
+  vaultAccessGrantCommand,
+  vaultAccessRevokeCommand,
+  vaultServiceTokenCreateCommand,
+  vaultServiceTokenListCommand,
+  vaultServiceTokenRevokeCommand,
+} from '../commands/vault-access.js';
 
 const program = new Command();
 
@@ -190,5 +220,162 @@ forward.command('ls')
 forward.command('stop <localPort>')
   .description('Stop a port forward by local port')
   .action(forwardStopCommand);
+
+// ── Vault commands ─────────────────────────────────────
+const vault = program
+  .command('vault')
+  .description('Manage encrypted environment secrets')
+  .enablePositionalOptions();
+
+vault.command('setup')
+  .description('Initialize vault config in current project directory')
+  .action(vaultSetupCommand);
+
+vault.command('run')
+  .description('Inject secrets and run a command (e.g. myssh vault run -- npm start)')
+  .option('-e, --env <envSlug>', 'Override environment from .myssh-vault.yaml')
+  .allowUnknownOption(true)
+  .allowExcessArguments(true)
+  .enablePositionalOptions()
+  .passThroughOptions()
+  .action(function () {
+    const cmd = this;
+    vaultRunCommand(cmd.args, cmd.opts());
+  });
+
+// ── Vault project sub-commands ─────────────────────────
+const vaultProject = vault
+  .command('project')
+  .description('Manage vault projects');
+
+vaultProject.command('create [name] [slug]')
+  .description('Create a new vault project')
+  .action(vaultProjectCreateCommand);
+
+vaultProject.command('ls')
+  .description('List vault projects')
+  .action(vaultProjectListCommand);
+
+vaultProject.command('rm [slug]')
+  .description('Delete a vault project')
+  .action(vaultProjectRemoveCommand);
+
+// ── Vault environment sub-commands ─────────────────────
+const vaultEnv = vault
+  .command('env')
+  .description('Manage vault environments');
+
+vaultEnv.command('create [slug]')
+  .description('Create an environment')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultEnvCreateCommand);
+
+vaultEnv.command('ls')
+  .description('List environments')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultEnvListCommand);
+
+vaultEnv.command('rm [envSlug]')
+  .description('Delete an environment')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultEnvRemoveCommand);
+
+vaultEnv.command('clone [sourceEnv] [targetEnv]')
+  .description('Clone an environment')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultEnvCloneCommand);
+
+// ── Vault secret commands (context from .myssh-vault.yaml) ──
+vault.command('set <key> [value]')
+  .description('Set a secret (prompts for value if omitted)')
+  .option('--org <orgId>', 'Organization ID')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('-e, --env <slug>', 'Environment slug')
+  .action(vaultSetCommand);
+
+vault.command('get <key>')
+  .description('Get a secret value')
+  .option('--org <orgId>', 'Organization ID')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('-e, --env <slug>', 'Environment slug')
+  .action(vaultGetCommand);
+
+vault.command('ls')
+  .description('List secret keys in active environment')
+  .option('--org <orgId>', 'Organization ID')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('-e, --env <slug>', 'Environment slug')
+  .action(vaultListCommand);
+
+vault.command('rm <key>')
+  .description('Delete a secret')
+  .option('--org <orgId>', 'Organization ID')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('-e, --env <slug>', 'Environment slug')
+  .action(vaultRemoveCommand);
+
+vault.command('import <file>')
+  .description('Bulk import secrets from .env file')
+  .option('--org <orgId>', 'Organization ID')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('-e, --env <slug>', 'Environment slug')
+  .action(vaultImportCommand);
+
+vault.command('export')
+  .description('Export secrets as .env format to stdout')
+  .option('--org <orgId>', 'Organization ID')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('-e, --env <slug>', 'Environment slug')
+  .action(vaultExportCommand);
+
+vault.command('history <key>')
+  .description('Show version history of a secret')
+  .option('--org <orgId>', 'Organization ID')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('-e, --env <slug>', 'Environment slug')
+  .action(vaultHistoryCommand);
+
+// ── Vault access sub-commands ──────────────────────────
+const vAccess = vault
+  .command('access')
+  .description('Manage vault project access');
+
+vAccess.command('ls')
+  .description('List who has access to a vault project')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultAccessListCommand);
+
+vAccess.command('grant <email>')
+  .description('Grant a user access to a vault project')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('--permission <perm>', 'Permission level (VIEW, READ, WRITE, ADMIN)')
+  .action(vaultAccessGrantCommand);
+
+vAccess.command('revoke <email>')
+  .description('Revoke a user\'s vault project access')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultAccessRevokeCommand);
+
+// ── Vault service token sub-commands ───────────────────
+const svcToken = vault
+  .command('service-token')
+  .description('Manage long-lived service tokens for CI/CD');
+
+svcToken.command('create')
+  .description('Create a service token scoped to project + environment')
+  .option('-p, --project <slug>', 'Project slug')
+  .option('--permission <perm>', 'Token permission (VIEW, READ, WRITE)')
+  .option('--expires <minutes>', 'Expiration in minutes')
+  .action(vaultServiceTokenCreateCommand);
+
+svcToken.command('ls')
+  .description('List service tokens')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultServiceTokenListCommand);
+
+svcToken.command('revoke [tokenId]')
+  .description('Revoke a service token')
+  .option('-p, --project <slug>', 'Project slug')
+  .action(vaultServiceTokenRevokeCommand);
 
 program.parse();
