@@ -2,12 +2,18 @@
 
 import { Command } from 'commander';
 import { loginCommand } from '../commands/login.js';
+import { registerCommand } from '../commands/register.js';
 import { logoutCommand } from '../commands/logout.js';
 import { whoamiCommand } from '../commands/whoami.js';
 import { nodeListCommand } from '../commands/node-ls.js';
 import { connectCommand } from '../commands/connect.js';
+import { nodeRenameCommand } from '../commands/node-rename.js';
+import { nodeTransferCommand } from '../commands/node-transfer.js';
 import { tokenGenerateCommand } from '../commands/token-generate.js';
 import { proxyCommand } from '../commands/proxy.js';
+import { forwardCommand } from '../commands/forward.js';
+import { forwardListCommand } from '../commands/forward-ls.js';
+import { forwardStopCommand } from '../commands/forward-stop.js';
 import { orgCreateCommand } from '../commands/org-create.js';
 import { orgListCommand } from '../commands/org-ls.js';
 import { orgSwitchCommand } from '../commands/org-switch.js';
@@ -39,6 +45,11 @@ program
   .action(loginCommand);
 
 program
+  .command('register')
+  .description('Create a new account and generate ephemeral SSH keys')
+  .action(registerCommand);
+
+program
   .command('logout')
   .description('Clear saved token and ephemeral keys')
   .action(logoutCommand);
@@ -53,7 +64,7 @@ const org = program
   .command('org')
   .description('Manage organizations');
 
-org.command('create')
+org.command('create [name] [slug]')
   .description('Create a new organization')
   .action(orgCreateCommand);
 
@@ -97,6 +108,10 @@ node.command('ls')
   .description('List all registered nodes')
   .action(nodeListCommand);
 
+node.command('rename <nodeId> <name>')
+  .description('Set a display name for a node')
+  .action(nodeRenameCommand);
+
 node.command('block <nodeId>')
   .description('Block a compromised node')
   .action(nodeBlockCommand);
@@ -108,6 +123,10 @@ node.command('unblock <nodeId>')
 node.command('rm <nodeId>')
   .description('Remove a node')
   .action(nodeRemoveCommand);
+
+node.command('transfer <nodeId> <targetOrgId>')
+  .description('Transfer a node to another organization')
+  .action(nodeTransferCommand);
 
 // ── Node access sub-commands ───────────────────────────
 const access = node
@@ -141,11 +160,34 @@ program
   .command('connect <nodeIdOrHostname>')
   .description('Get a certificate and SSH into a node (accepts node ID or hostname)')
   .option('-d, --direct', 'Connect directly to the node (skip proxy)')
+  .option('-t, --ttl <minutes>', 'Session TTL in minutes (1-60, default: 30)', '30')
   .action(connectCommand);
 
 program
   .command('proxy <nodeId>')
   .description('TCP tunnel via WebSocket (used as SSH ProxyCommand)')
+  .option('-t, --ttl <minutes>', 'Session TTL in minutes', '30')
   .action(proxyCommand);
+
+// ── Port forwarding commands ───────────────────────────
+const forward = program
+  .command('forward')
+  .description('Forward remote node ports to localhost');
+
+forward.command('start <nodeIdOrHostname> <remotePort> [localPort]')
+  .description('Forward a remote port to localhost (e.g. forward start myserver 5432 3000)')
+  .option('-H, --remote-host <host>', 'Remote bind address on the node', '127.0.0.1')
+  .option('-b, --background', 'Run in background')
+  .option('-t, --ttl <minutes>', 'Session TTL in minutes (1-60, default: 30)', '30')
+  .option('--daemon', 'Internal: marks process as the background daemon')
+  .action(forwardCommand);
+
+forward.command('ls')
+  .description('List active port forwards')
+  .action(forwardListCommand);
+
+forward.command('stop <localPort>')
+  .description('Stop a port forward by local port')
+  .action(forwardStopCommand);
 
 program.parse();

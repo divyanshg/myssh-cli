@@ -24,6 +24,7 @@ export async function nodeListCommand() {
     const table = new Table({
       head: [
         chalk.cyan('Node ID'),
+        chalk.cyan('Name'),
         chalk.cyan('Hostname'),
         chalk.cyan('IP Address'),
         chalk.cyan('OS'),
@@ -37,6 +38,7 @@ export async function nodeListCommand() {
       const colorFn = STATUS_COLORS[node.status] || chalk.white;
       table.push([
         node.id,
+        node.name || chalk.dim('—'),
         node.hostname,
         node.ipAddress,
         node.osInfo,

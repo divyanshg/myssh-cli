@@ -1,6 +1,6 @@
 {
-  "name": "myssh",
-  "version": "1.0.0",
+  "name": "@avtl/myssh",
+  "version": "1.0.1",
   "description": "Zero-Trust SSH Access Proxy CLI",
   "type": "module",
   "bin": {

@@ -6,6 +6,7 @@ import { KEY_PATH, PUB_KEY_PATH, CERT_PATH, writeFile600, requireOrgId } from '.
 
 export async function connectCommand(nodeIdOrHostname, options) {
   const orgId = requireOrgId();
+  const ttl = Math.min(Math.max(1, parseInt(options.ttl, 10) || 30), 60);
 
   // 1. Validate local state
   if (!existsSync(KEY_PATH) || !existsSync(PUB_KEY_PATH)) {
@@ -54,7 +55,7 @@ export async function connectCommand(nodeIdOrHostname, options) {
   // 3. Request a short-lived certificate from the API
   let certData;
   try {
-    certData = await api.issueCertificate(orgId, nodeId, publicKey);
+    certData = await api.issueCertificate(orgId, nodeId, publicKey, ttl);
   } catch (err) {
     if (err.response?.status === 401) {
       console.error(chalk.red('✖ Session expired. Run: myssh login'));
@@ -109,7 +110,7 @@ export async function connectCommand(nodeIdOrHostname, options) {
   } else {
     // Proxy mode (default): tunnel through the backend via WebSocket
     console.log(chalk.cyan(`\n→ Connecting to ${sshUser}@${certData.hostname} via proxy ...\n`));
-    sshArgs.push('-o', `ProxyCommand=myssh proxy ${nodeId}`);
+    sshArgs.push('-o', `ProxyCommand=myssh proxy ${nodeId} --ttl ${ttl}`);
     sshArgs.push(`${sshUser}@${certData.hostname}`);
   }
 

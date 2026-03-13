@@ -2,15 +2,16 @@ import WebSocket from 'ws';
 import { getToken } from '../lib/config.js';
 import { API_BASE } from '../lib/api.js';
 
-export function proxyCommand(nodeId) {
+export function proxyCommand(nodeId, options) {
   const token = getToken();
   if (!token) {
     process.stderr.write('Not authenticated. Run: myssh login\n');
     process.exit(1);
   }
 
+  const ttl = Math.min(Math.max(1, parseInt(options?.ttl, 10) || 30), 60);
   const wsUrl = API_BASE.replace(/^http/, 'ws');
-  const url = `${wsUrl}/api/tunnel/connect?nodeId=${encodeURIComponent(nodeId)}&token=${encodeURIComponent(token)}`;
+  const url = `${wsUrl}/api/tunnel/connect?nodeId=${encodeURIComponent(nodeId)}&token=${encodeURIComponent(token)}&ttl=${encodeURIComponent(String(ttl))}`;
 
   const ws = new WebSocket(url);
   ws.binaryType = 'nodebuffer';

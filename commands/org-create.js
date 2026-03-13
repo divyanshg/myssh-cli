@@ -2,9 +2,9 @@ import { input } from '@inquirer/prompts';
 import chalk from 'chalk';
 import * as api from '../lib/api.js';
 
-export async function orgCreateCommand() {
-  const name = await input({ message: 'Organization name:' });
-  const slug = await input({ message: 'Slug (URL-safe, e.g. my-team):' });
+export async function orgCreateCommand(nameArg, slugArg) {
+  const name = nameArg || await input({ message: 'Organization name:' });
+  const slug = slugArg || await input({ message: 'Slug (URL-safe, e.g. my-team):' });
 
   try {
     const org = await api.createOrg(name, slug);
