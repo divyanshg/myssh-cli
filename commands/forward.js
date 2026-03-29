@@ -190,7 +190,7 @@ export async function forwardCommand(nodeIdOrHostname, remotePort, localPort, op
 
   // ── Graceful shutdown ──
   const shutdown = () => {
-    removeForward(localPort);
+    // removeForward(localPort);
     server.close();
     process.exit(0);
   };

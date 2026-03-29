@@ -30,6 +30,7 @@ export async function nodeListCommand() {
         chalk.cyan('OS'),
         chalk.cyan('Username'),
         chalk.cyan('Status'),
+        chalk.cyan('TOTP'),
       ],
       style: { head: [], border: [] },
     });
@@ -44,6 +45,7 @@ export async function nodeListCommand() {
         node.osInfo,
         node.username || 'ubuntu',
         colorFn(node.status),
+        node.totpRequired ? chalk.yellow('✔') : chalk.dim('—'),
       ]);
     }
 

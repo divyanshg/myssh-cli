@@ -29,8 +29,14 @@ export async function vaultSetCommand(key, value, options) {
       value = await passwordPrompt({ message: `Value for ${key}:`, mask: '' });
     }
 
-    const result = await api.setVaultSecret(ctx.orgId, ctx.projectSlug, ctx.envSlug, key, value);
+    const result = await api.setVaultSecret(ctx.orgId, ctx.projectSlug, ctx.envSlug, key, value, {
+      ttl: options.ttl,
+      expiresAt: options.expiresAt,
+    });
     console.log(chalk.green(`✓ ${result.action} "${key}" (v${result.version})`));
+    if (result.expiresAt) {
+      console.log(chalk.dim(`  Expires: ${new Date(result.expiresAt).toLocaleString()}`));
+    }
   } catch (err) {
     console.error(chalk.red(err.response?.data?.message || err.message));
   }
@@ -49,23 +55,31 @@ export async function vaultGetCommand(key, options) {
 export async function vaultListCommand(options) {
   try {
     const ctx = requireVaultContext(options);
-    const { secrets } = await api.listVaultSecrets(ctx.orgId, ctx.projectSlug, ctx.envSlug);
+    const { secrets } = await api.listVaultSecrets(ctx.orgId, ctx.projectSlug, ctx.envSlug, {
+      includeDeleted: options.includeDeleted,
+    });
 
     if (!secrets.length) {
       console.log(chalk.yellow('No secrets in this environment.'));
       return;
     }
 
+    const heads = [chalk.cyan('Key'), chalk.cyan('Version'), chalk.cyan('Updated'), chalk.cyan('Status')];
     const table = new Table({
-      head: [chalk.cyan('Key'), chalk.cyan('Version'), chalk.cyan('Updated')],
+      head: heads,
       style: { head: [], border: [] },
     });
 
     for (const s of secrets) {
+      let status = chalk.green('active');
+      if (s.isDeleted) status = chalk.red('deleted');
+      else if (s.isExpired) status = chalk.red('expired');
+      else if (s.expiringSoon) status = chalk.yellow('expiring soon');
       table.push([
         s.key,
         `v${s.version}`,
         new Date(s.updatedAt).toLocaleString(),
+        status,
       ]);
     }
 
@@ -79,7 +93,7 @@ export async function vaultRemoveCommand(key, options) {
   try {
     const ctx = requireVaultContext(options);
     await api.deleteVaultSecret(ctx.orgId, ctx.projectSlug, ctx.envSlug, key);
-    console.log(chalk.green(`✓ Secret "${key}" deleted`));
+    console.log(chalk.green(`✓ Secret "${key}" soft-deleted (recoverable for 30 days)`));
   } catch (err) {
     console.error(chalk.red(err.response?.data?.message || err.message));
   }
@@ -155,6 +169,36 @@ export async function vaultHistoryCommand(key, options) {
     }
 
     console.log(table.toString());
+  } catch (err) {
+    console.error(chalk.red(err.response?.data?.message || err.message));
+  }
+}
+
+export async function vaultRestoreCommand(key, options) {
+  try {
+    const ctx = requireVaultContext(options);
+    const result = await api.restoreVaultSecret(ctx.orgId, ctx.projectSlug, ctx.envSlug, key);
+    console.log(chalk.green(`✓ Secret "${key}" restored (v${result.version})`));
+  } catch (err) {
+    console.error(chalk.red(err.response?.data?.message || err.message));
+  }
+}
+
+export async function vaultPurgeCommand(key, options) {
+  try {
+    const ctx = requireVaultContext(options);
+    await api.purgeVaultSecret(ctx.orgId, ctx.projectSlug, ctx.envSlug, key);
+    console.log(chalk.green(`✓ Secret "${key}" permanently purged`));
+  } catch (err) {
+    console.error(chalk.red(err.response?.data?.message || err.message));
+  }
+}
+
+export async function vaultRollbackCommand(key, version, options) {
+  try {
+    const ctx = requireVaultContext(options);
+    const result = await api.rollbackVaultSecret(ctx.orgId, ctx.projectSlug, ctx.envSlug, key, parseInt(version, 10));
+    console.log(chalk.green(`✓ Secret "${key}" rolled back to v${version} → now v${result.version}`));
   } catch (err) {
     console.error(chalk.red(err.response?.data?.message || err.message));
   }

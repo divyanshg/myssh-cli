@@ -1,6 +1,8 @@
 import { execSync, spawn } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import chalk from 'chalk';
+import { input } from '@inquirer/prompts';
+import qrcodeTerminal from 'qrcode-terminal';
 import * as api from '../lib/api.js';
 import { KEY_PATH, PUB_KEY_PATH, CERT_PATH, writeFile600, requireOrgId } from '../lib/config.js';
 
@@ -18,10 +20,10 @@ export async function connectCommand(nodeIdOrHostname, options) {
 
   // 2. Resolve hostname or partial ID to full node ID
   let nodeId;
+  let match;
   try {
     const nodes = await api.listNodes(orgId);
     const isHexId = /^[a-f0-9]+$/.test(nodeIdOrHostname);
-    let match;
     if (isHexId) {
       // Exact match first, then prefix match
       match = nodes.find(n => n.id === nodeIdOrHostname);
@@ -52,10 +54,74 @@ export async function connectCommand(nodeIdOrHostname, options) {
     process.exit(1);
   }
 
-  // 3. Request a short-lived certificate from the API
+  // 3. Handle TOTP if required by the node
+  let totpCode = null;
+  if (match.totpRequired) {
+    try {
+      const totpStatus = await api.getTotpStatus();
+
+      if (!totpStatus.verified) {
+        // User needs to set up TOTP first
+        console.log(chalk.yellow('\n⚠ This node requires TOTP authentication.'));
+        console.log(chalk.cyan('  Setting up your authenticator...\n'));
+
+        const setup = await api.setupTotp();
+
+        // Display QR code in terminal
+        console.log(chalk.bold('Scan this QR code with your authenticator app:\n'));
+        await new Promise((resolve) => {
+          qrcodeTerminal.generate(setup.otpauthUri, { small: true }, (qr) => {
+            console.log(qr);
+            resolve();
+          });
+        });
+
+        console.log(chalk.dim(`  Or enter manually: ${setup.secret}\n`));
+
+        // Show backup codes
+        console.log(chalk.bold.yellow('⚠ Save these backup codes in a safe place:'));
+        console.log(chalk.bold.yellow('  (Each code can only be used once)\n'));
+        for (const code of setup.backupCodes) {
+          console.log(chalk.white(`    ${code}`));
+        }
+        console.log('');
+
+        // Prompt for verification code
+        const verifyCode = await input({
+          message: 'Enter the 6-digit code from your authenticator to verify:',
+          validate: (val) => /^\d{6}$/.test(val) || 'Must be a 6-digit code',
+        });
+
+        try {
+          await api.verifyTotpSetup(verifyCode);
+          console.log(chalk.green('✔ TOTP configured successfully.\n'));
+        } catch (verifyErr) {
+          const msg = verifyErr.response?.data?.message || verifyErr.message;
+          console.error(chalk.red(`✖ TOTP verification failed: ${msg}`));
+          process.exit(1);
+        }
+      }
+
+      // Prompt for TOTP code
+      totpCode = await input({
+        message: 'Enter TOTP code:',
+        validate: (val) => /^[A-Z0-9]{6,8}$/i.test(val) || 'Enter a 6-digit code or 8-character backup code',
+      });
+      totpCode = totpCode.toUpperCase();
+    } catch (err) {
+      if (err.name === 'ExitPromptError') {
+        process.exit(0);
+      }
+      const msg = err.response?.data?.message || err.message;
+      console.error(chalk.red(`✖ TOTP error: ${msg}`));
+      process.exit(1);
+    }
+  }
+
+  // 4. Request a short-lived certificate from the API
   let certData;
   try {
-    certData = await api.issueCertificate(orgId, nodeId, publicKey, ttl);
+    certData = await api.issueCertificate(orgId, nodeId, publicKey, ttl, totpCode);
   } catch (err) {
     if (err.response?.status === 401) {
       console.error(chalk.red('✖ Session expired. Run: myssh login'));
@@ -66,7 +132,16 @@ export async function connectCommand(nodeIdOrHostname, options) {
       process.exit(1);
     }
     if (err.response?.status === 403) {
-      console.error(chalk.red('✖ Access denied. You do not have permission to connect to this node.'));
+      const code = err.response?.data?.code;
+      if (code === 'TOTP_REQUIRED') {
+        console.error(chalk.red('✖ This node requires a TOTP code.'));
+      } else if (code === 'TOTP_NOT_CONFIGURED') {
+        console.error(chalk.red('✖ TOTP not configured. Run: myssh connect again to set up.'));
+      } else if (code === 'TOTP_INVALID') {
+        console.error(chalk.red('✖ Invalid TOTP code. Please try again.'));
+      } else {
+        console.error(chalk.red('✖ Access denied. You do not have permission to connect to this node.'));
+      }
       process.exit(1);
     }
     const msg = err.response?.data?.message || err.message;
@@ -74,13 +149,13 @@ export async function connectCommand(nodeIdOrHostname, options) {
     process.exit(1);
   }
 
-  // 3. Write the certificate
+  // 5. Write the certificate
   writeFile600(CERT_PATH, certData.certificate + '\n');
   console.log(chalk.green('✔ Certificate issued.'));
   console.log(chalk.dim(`  Expires in: ${certData.expiresIn}`));
   console.log(chalk.dim(`  Target:     ${certData.hostname} (${certData.ipAddress})`));
 
-  // 4. Inject key into ssh-agent
+  // 6. Inject key into ssh-agent
   try {
     execSync(`ssh-add "${KEY_PATH}"`, { stdio: 'pipe' });
     console.log(chalk.green('✔ Key added to SSH agent.'));
@@ -95,7 +170,7 @@ export async function connectCommand(nodeIdOrHostname, options) {
     process.exit(1);
   }
 
-  // 5. Spawn interactive SSH session
+  // 7. Spawn interactive SSH session
   const sshUser = certData.username || 'ubuntu';
   const sshArgs = [
     '-o', 'StrictHostKeyChecking=accept-new',
