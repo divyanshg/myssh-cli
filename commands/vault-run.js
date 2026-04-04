@@ -6,28 +6,29 @@ import Table from "cli-table3";
 
 export async function vaultRunCommand(args, options) {
   try {
-    const config = loadVaultConfig();
-    if (!config) {
-      console.error(chalk.red('No .myssh-vault.yaml found. Run: myssh vault setup'));
-      process.exit(1);
-    }
-
-    const orgId = config.org;
-    const projectSlug = config.project;
-    const envSlug = options?.env || config.environment;
-
-    if (!orgId || !projectSlug || !envSlug) {
-      console.error(chalk.red('Incomplete vault config. Run: myssh vault setup'));
-      process.exit(1);
-    }
-
-    // Check if using a service token
+    // Check if using a service token — it encodes org/project/env on the backend,
+    // so no .myssh-vault.yaml is needed in CI/deployed environments.
     const serviceToken = process.env.MYSSH_VAULT_TOKEN;
     let secrets;
 
     if (serviceToken) {
       secrets = await api.injectViaServiceToken(serviceToken);
     } else {
+      const config = loadVaultConfig();
+      if (!config) {
+        console.error(chalk.red('No .myssh-vault.yaml found. Run: myssh vault setup'));
+        process.exit(1);
+      }
+
+      const orgId = config.org;
+      const projectSlug = config.project;
+      const envSlug = options?.env || config.environment;
+
+      if (!orgId || !projectSlug || !envSlug) {
+        console.error(chalk.red('Incomplete vault config. Run: myssh vault setup'));
+        process.exit(1);
+      }
+
       secrets = await api.injectVaultSecrets(orgId, projectSlug, envSlug);
     }
 
