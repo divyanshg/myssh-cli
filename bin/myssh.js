@@ -80,6 +80,18 @@ import {
   vaultKeyReEncryptCommand,
   vaultKeyInfoCommand,
 } from "../commands/vault-key.js";
+import {
+  personalSetCommand,
+  personalGetCommand,
+  personalListCommand,
+  personalRemoveCommand,
+} from "../commands/vault-personal.js";
+import { runCommand, copyCommand } from "../commands/run.js";
+import {
+  sshTokenCreateCommand,
+  sshTokenListCommand,
+  sshTokenRevokeCommand,
+} from "../commands/ssh-token.js";
 
 const program = new Command();
 
@@ -256,6 +268,23 @@ program
   .option("-t, --ttl <minutes>", "Session TTL in minutes", "30")
   .action(proxyCommand);
 
+// ── Non-interactive commands (for automation) ──────────
+program
+  .command("run <nodeIdOrHostname> <command>")
+  .description("Run a command on a remote node (non-interactive, for automation)")
+  .option("-t, --ttl <minutes>", "Session TTL in minutes (1-60)", "30")
+  .option("--totp <code>", "TOTP code if required by node")
+  .option("-q, --quiet", "Suppress error messages (only output command result)")
+  .action(runCommand);
+
+program
+  .command("cp <source> <destination>")
+  .description("Copy a file to a remote node (e.g. myssh cp ./file.txt node:/path/to/dest)")
+  .option("-t, --ttl <minutes>", "Session TTL in minutes (1-60)", "30")
+  .option("--totp <code>", "TOTP code if required by node")
+  .option("-q, --quiet", "Suppress error messages")
+  .action(copyCommand);
+
 // ── Port forwarding commands ───────────────────────────
 const forward = program
   .command("forward")
@@ -289,6 +318,29 @@ forward
   .command("stop <localPort>")
   .description("Stop a port forward by local port")
   .action(forwardStopCommand);
+
+// ── SSH Service Tokens (for CI/CD) ─────────────────────
+const sshToken = program
+  .command("ssh-token")
+  .description("Manage SSH service tokens for CI/CD automation");
+
+sshToken
+  .command("create")
+  .description("Create a new SSH service token")
+  .option("-n, --name <name>", "Token name (e.g. github-actions-prod)")
+  .option("--nodes <nodeIds>", "Comma-separated list of allowed node IDs (required)")
+  .option("--expires <duration>", "Expiration duration (e.g. 30d, 24h, 60m)")
+  .action(sshTokenCreateCommand);
+
+sshToken
+  .command("ls")
+  .description("List SSH service tokens")
+  .action(sshTokenListCommand);
+
+sshToken
+  .command("revoke [tokenId]")
+  .description("Revoke an SSH service token")
+  .action(sshTokenRevokeCommand);
 
 // ── Vault commands ─────────────────────────────────────
 const vault = program
@@ -545,6 +597,43 @@ key
   .command("info")
   .description("Show encryption key versions and usage")
   .action(vaultKeyInfoCommand);
+
+// ── Vault personal override sub-commands ───────────────
+const personal = vault
+  .command("personal")
+  .description("Manage personal secret overrides (per-user)");
+
+personal
+  .command("set <key> [value]")
+  .description("Set a personal override for a shared secret (prompts for value if omitted)")
+  .option("--org <orgId>", "Organization ID")
+  .option("-p, --project <slug>", "Project slug")
+  .option("-e, --env <slug>", "Environment slug")
+  .action(personalSetCommand);
+
+personal
+  .command("get <key>")
+  .description("Get your personal override value for a secret")
+  .option("--org <orgId>", "Organization ID")
+  .option("-p, --project <slug>", "Project slug")
+  .option("-e, --env <slug>", "Environment slug")
+  .action(personalGetCommand);
+
+personal
+  .command("ls")
+  .description("List your personal overrides in active environment")
+  .option("--org <orgId>", "Organization ID")
+  .option("-p, --project <slug>", "Project slug")
+  .option("-e, --env <slug>", "Environment slug")
+  .action(personalListCommand);
+
+personal
+  .command("rm <key>")
+  .description("Remove a personal override (falls back to shared value)")
+  .option("--org <orgId>", "Organization ID")
+  .option("-p, --project <slug>", "Project slug")
+  .option("-e, --env <slug>", "Environment slug")
+  .action(personalRemoveCommand);
 
 program.parse();
 
